@@ -1,0 +1,126 @@
+---
+title: "get_all_data"
+author: "santiago"
+date: "2023-08-07"
+output: html_document
+---
+
+```{r Get organize word files}
+Sys.glob("../data/JHH/*.docx")->files_word1
+Sys.glob("../data/sample_jd/*.docx")[1:255]->files_word2
+Sys.glob("../../jdmaster/*.docx")->files_word3
+
+
+df_w<-data.frame(files=c(files_word1,files_word2,files_word3))
+
+#Create dsm df and get traceable keys:
+df_w %>% 
+  mutate(dsm = as.double(vectorized_get_dsm(df_w$files)),
+         file_modified = file.info(files)$mtime) %>% 
+  filter(dsm>=9999999 & !is.na(dsm))->df_w
+
+
+
+df_w %>% 
+  group_by(dsm) %>% 
+  mutate(recent_date = max(file_modified)) %>% 
+  mutate(outdated= case_when(file_modified!= recent_date~1,
+                             T~0)) %>% 
+  filter(outdated!=1) %>% 
+  select(-c(recent_date, outdated)) %>% 
+  distinct(dsm, .keep_all = TRUE)->df_w
+
+df_w$type <- "word"
+nrow(df_w)
+
+```
+
+
+```{r}
+df_w %>% 
+  group_by(dsm) %>% 
+  mutate(recent_date = max(file_modified)) %>% 
+  mutate(outdated= case_when(file_modified!= recent_date~1,
+                             T~0)) %>%
+  filter(outdated==0)->files_and_dsm_df
+
+files_and_dsm_df %>% 
+  filter(type== "word")->word_df
+
+word_df %>%select(c(dsm, file_modified))->dsm_modified
+
+# write_csv(dsm_modified, "../data/jd_modified_datetime.csv")
+
+
+```
+
+```{r}
+# readr::read_csv("../../masterdata/data/JRS_recent_7_26.csv")->jrs
+# #cHECK THE FILES THAT ARE ATTACGHED TO A JRS DSM
+# files_and_dsm_df %>% 
+#   mutate(in_jrs = case_when(dsm %in% jrs$DSM~1,
+#                             T~0)) %>% 
+#   summarise(n =n()) %>% 
+#   arrange(-n)
+```
+
+
+
+
+```{r get all word files ps data}
+get_text2(df= word_df[1:3], pattern ="summary\\s*|summary|summary:$|(?i)[[:punct:][:space:][:digit:]]{0,6}summary[[:punct:][:space:][:digit:]]{0,6}",name ="ps", nv=c(0,35,300), print_num =T, view = T)->ps_mega
+long_text_df(ps_mega)->long_ps_mega
+long_ps_mega %>% view()
+```
+
+
+```{r get all word files ps data}
+long_ps_mega %>% 
+  mutate(entity_encode = str_sub(dsm, end = 2)) %>% 
+  group_by(dsm) %>% 
+  mutate(lag_text = lag(text, default = "first line"),
+         lag_text2 = lag(lag_text, default = "second line"),
+         lag_text3 = lag(lag_text2, default = "third line"),
+         lag_text4 = lag(lag_text3, default = "fourth line"))->ps_final_df
+
+ps_final_df %>% view()
+```
+
+```{r}
+get_text2(df=word_df, pattern = "Education:", name ="edu", nv= c(0,35,300), print_num =T)->edu_mega
+long_text_df(edu_mega)->long_edu_mega
+
+long_edu_mega %>% 
+  mutate(entity_encode = str_sub(dsm, end = 2)) %>% 
+  group_by(dsm) %>% 
+  mutate(lag_text = lag(text, default = "first line"),
+         lag_text2 = lag(lag_text, default = "second line"),
+         lag_text3 = lag(lag_text2, default = "third line"),
+         lag_text4 = lag(lag_text3, default = "fourth line"))->edu_final_df
+```
+
+```{r}
+get_text2(df=word_df, pattern = "Knowledge:|Qualifications:", name = "qualifications",nv= c(0,40,300), print_num = T)->quali_mega
+long_text_df(quali_mega)->long_quali_mega
+
+long_quali_mega %>% 
+  mutate(entity_encode = str_sub(dsm, end = 2)) %>% 
+  group_by(dsm) %>% 
+  mutate(lag_text = lag(text, default = "first line"),
+         lag_text2 = lag(lag_text, default = "second line"),
+         lag_text3 = lag(lag_text2, default = "third line"),
+         lag_text4 = lag(lag_text3, default = "fourth line"))->quali_final_df
+```
+
+```{r}
+# write_csv(ps_final_df, "../data/ps_final_df.csv")
+# write_csv(edu_final_df, "../data/edu_final_df.csv")
+# write_csv(quali_final_df, "../data/quali_final_df.csv")
+```
+
+```{r}
+#rewrite 
+# write_csv(ps_final_df, "../data/final_df/ps_final_df2.csv")
+```
+
+

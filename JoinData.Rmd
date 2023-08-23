@@ -1,0 +1,135 @@
+---
+title: "jdrun0"
+author: "santiago"
+date: "2023-07-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+```{r}
+list.files(path="../../masterdata/data/")
+readr::read_csv("../../masterdata/data/Emp_master08-02.csv")->emp_master
+readr::read_csv("../../masterdata/data/JRS_recent_7_26.csv")->jrs
+
+
+```
+
+# First, identify what data from JD project can be received from jrs and what from EMP_master.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. Reports To :  Get the dsm from jrs, match with supervisor dsm, then match that with jrs `emp_master`
+2. DSM : `key` get from jrs and JD
+3. DSM title: `sap` Get from jrs
+4. Exemption status: `sap` from jrs: flsa
+5. Job Family: `jrs` if not `sap`:
+6. Bargaining unit : *maybe from jd*
+7. Pay grade level: `jrs`: (join `pay grade group` and `pay grade level` `sap` (have to join `Pay Grade` and `Pay Grade Level`)
+
+
+
+## Display that employees under the same dsm report to supervisors with different dsm then get supervisor dsm to a dsm
+```{r supervisor}
+#Show that employees with same dsm report to managers
+emp_master %>% select(c(Employee, `DSM Code`, `DSM Code Title`, `Current Supervisor`,`Current Supervisor Title`)) %>% 
+  filter(str_detect(`DSM Code Title`, "^COMPENSATION C"))
+
+emp_master %>% 
+  filter(str_detect(`DSM Code Title`, "COMPENSATION "))
+  
+# Get table with dsm for all employees and who they report to. Then delete duplicates
+
+emp_master %>% 
+  select(c( supervisor_position =`Current Supervisor Position`,`DSM Code`, `Employee Position`)) %>% 
+  distinct(.keep_all = T) %>% 
+  mutate(supervisor_position = as.double(supervisor_position))->dsm_to_supervisor_position
+
+
+
+dsm_to_supervisor_position[2:3] %>% 
+  rename(supervisor_position =`Employee Position`, supervisor_dsm =`DSM Code` )->supervisor
+
+dsm_to_supervisor_position[1:2] %>% 
+  left_join(supervisor)->dsm_to_supervisor_dsm
+
+#Below is final result, we have a df that matches DSM CODE key with supervisor DSM, so that we can match to other supervisor attributes.
+
+
+```
+
+```{r supervisor}
+#Create supervisor title object with key for jrs
+jrs %>% 
+  select(c(supervisor_dsm = DSM, supervisor_title_jrs =`Job Title`))->supervisor_title_jrs
+
+emp_master %>% 
+  select(c(supervisor_dsm = `DSM Code`, supervisor_title_sap = `DSM Code Title`))->supervisor_title_sap
+
+#match 
+dsm_to_supervisor_dsm %>%
+  left_join(supervisor_title_sap) %>% 
+  mutate(supervisor_dsm = as.double(supervisor_dsm)) %>% 
+  left_join(supervisor_title_jrs) %>% 
+  relocate(`DSM Code`) %>% 
+  distinct()->DSM_to_supervisor
+
+```
+
+join `pay grade group` and `pay grade level
+```{r}
+jrs %>% 
+  select(c(dsm= DSM, `Job Title`, FLSA,`Job Family`,`Pay Grade Group`,Level, Certifications))->jrs_attributes
+
+DSM_to_supervisor %>% 
+  mutate(dsm= as.numeric(`DSM Code`),.before = everything()) %>% 
+  left_join(jrs_attributes, by ="dsm") %>% 
+  distinct() %>% 
+  select(-`DSM Code`)->large_table
+```
+```{r}
+emp_master %>% 
+  select(c("dsm" = `DSM Code`,"title" = `DSM Code Title`, `EEO Job Category Title`)) %>% 
+  mutate(dsm = as.numeric(dsm)) %>% 
+  distinct()->emp_to_title
+```
+
+```{r}
+read_csv("../data/jd_data_clean")->jd_clean
+
+jd_clean %>% glimpse()
+large_table %>% glimpse()
+
+full_join(jd_clean, large_table, by="dsm") ->larger_table
+
+larger_table %>%
+  rename(c(job_summary=text_parsed2, supervisor_title = supervisor_title_sap)) %>%
+  select(-supervisor_title_jrs) %>% 
+  left_join(emp_to_title, by= "dsm") %>% 
+  relocate(c(Title= title, dsm, Alternate_Title_jrs =`Job Title`,
+             `Job Family`, supervisor_position, supervisor_dsm, supervisor_title, EEO=`EEO Job Category Title`))->last_table
+
+last_table_2 <- last_table[sample(nrow(last_table)), ]
+
+# Order rows such that NA values are at the bottom
+df_ordered <- last_table_2[order(is.na(last_table_2$supervisor_title), last_table_2$supervisor_title), ]
+
+
+
+# write.table(df_ordered, "../data/jdexpert.csv", sep = ",", quote = TRUE, row.names = FALSE, fileEncoding = "ISO-8859-1")
+
+                         
+```
+
+
+
+
+
+
+
+
+
